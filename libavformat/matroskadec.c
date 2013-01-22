@@ -613,7 +613,8 @@ static int ebml_read_ascii(ByteIOContext *pb, int size, char **str)
     av_free(*str);
     /* EBML strings are usually not 0-terminated, so we allocate one
      * byte more, read the string and NULL-terminate it ourselves. */
-    if (!(*str = av_malloc(size + 1)))
+	*str = av_malloc(size + 1);
+    if (!(*str))
         return AVERROR(ENOMEM);
     if (get_buffer(pb, (uint8_t *) *str, size) != size) {
         av_free(*str);
@@ -631,7 +632,8 @@ static int ebml_read_ascii(ByteIOContext *pb, int size, char **str)
 static int ebml_read_binary(ByteIOContext *pb, int length, EbmlBin *bin)
 {
     av_free(bin->data);
-    if (!(bin->data = av_malloc(length)))
+	bin->data = av_malloc(length);
+    if (!(bin->data))
         return AVERROR(ENOMEM);
 
     bin->size = length;
@@ -965,7 +967,8 @@ static void matroska_fix_ass_packet(MatroskaDemuxContext *matroska,
         es = ec/   100;  ec -=    100*es;
         *ptr++ = '\0';
         len = 50 + end-ptr + FF_INPUT_BUFFER_PADDING_SIZE;
-        if (!(line = av_malloc(len)))
+		line = av_malloc(len);
+        if (!(line))
             return;
         snprintf(line,len,"Dialogue: %s,%d:%02d:%02d.%02d,%d:%02d:%02d.%02d,%s\r\n",
                  layer, sh, sm, ss, sc, eh, em, es, ec, ptr);

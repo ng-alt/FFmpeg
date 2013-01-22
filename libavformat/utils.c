@@ -31,6 +31,8 @@
 #undef NDEBUG
 #include <assert.h>
 
+#define OOM_DEBUG 0
+
 /**
  * @file libavformat/utils.c
  * various utility functions for use within FFmpeg
@@ -574,7 +576,8 @@ int av_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
     int ret;
     AVStream *st;
-
+	int alloc_count = 0;
+	int mem_alloc_size = 0;
     for(;;){
         AVPacketList *pktl = s->raw_packet_buffer;
 
@@ -583,14 +586,34 @@ int av_read_packet(AVFormatContext *s, AVPacket *pkt)
             if(s->streams[pkt->stream_index]->codec->codec_id != CODEC_ID_PROBE){
                 s->raw_packet_buffer = pktl->next;
                 av_free(pktl);
+                //fprintf(stdout, "successfully decoded alloc_count = %d\n",alloc_count);
                 return 0;
             }
+            /* wklin debug start */
+            else if (alloc_count > 0) {
+                AVProbeData *pd = &st->probe_data;
+                int i = 0;
+                while (pktl) {
+                    s->raw_packet_buffer = pktl->next;
+                    av_free(pktl);
+                    pktl = s->raw_packet_buffer;
+                    i++;
+                }
+                pd->buf_size=0;
+                av_freep(&pd->buf);
+                //fprintf(stdout, "cannot decode...%d entries freed\n",i);
+                return -1;
+            }
+            /* wklin debug end */
         }
 
         av_init_packet(pkt);
         ret= s->iformat->read_packet(s, pkt);
-        if (ret < 0)
+
+        if (ret < 0){
+            fprintf(stdout, "cannot decode...alloced cnt = %d \n",alloc_count);
             return ret;
+		}
         st= s->streams[pkt->stream_index];
 
         switch(st->codec->codec_type){
@@ -605,15 +628,19 @@ int av_read_packet(AVFormatContext *s, AVPacket *pkt)
             break;
         }
 
-        if(!pktl && st->codec->codec_id!=CODEC_ID_PROBE)
+        if(!pktl && st->codec->codec_id!=CODEC_ID_PROBE){
+            //fprintf(stdout, "decode ok...alloced cnt = %d \n",alloc_count);
             return ret;
-
+		}
         add_to_pktbuf(&s->raw_packet_buffer, pkt, &s->raw_packet_buffer_end);
+		alloc_count ++;	 /* wklin debug */
 
         if(st->codec->codec_id == CODEC_ID_PROBE){
             AVProbeData *pd = &st->probe_data;
 
             pd->buf = av_realloc(pd->buf, pd->buf_size+pkt->size+AVPROBE_PADDING_SIZE);
+            if (pd->buf == NULL)
+                fprintf(stdout, "pd->buf=NULL\n");
             memcpy(pd->buf+pd->buf_size, pkt->data, pkt->size);
             pd->buf_size += pkt->size;
             memset(pd->buf+pd->buf_size, 0, AVPROBE_PADDING_SIZE);
@@ -624,7 +651,7 @@ int av_read_packet(AVFormatContext *s, AVPacket *pkt)
                     pd->buf_size=0;
                     av_freep(&pd->buf);
                 }
-            }
+            } 
         }
     }
 }
@@ -941,6 +968,7 @@ static int av_read_frame_internal(AVFormatContext *s, AVPacket *pkt)
 {
     AVStream *st;
     int len, ret, i;
+	int count = 0;
 
     av_init_packet(pkt);
 
@@ -991,8 +1019,10 @@ static int av_read_frame_internal(AVFormatContext *s, AVPacket *pkt)
             }
         } else {
             AVPacket cur_pkt;
-            /* read next packet */
-            ret = av_read_packet(s, &cur_pkt);
+
+			/* read next packet */
+			ret = av_read_packet(s, &cur_pkt);
+
             if (ret < 0) {
                 if (ret == AVERROR(EAGAIN))
                     return ret;
@@ -1059,7 +1089,6 @@ static int av_read_frame_internal(AVFormatContext *s, AVPacket *pkt)
             pkt->dts,
             pkt->size,
             pkt->flags);
-
     return 0;
 }
 
@@ -1689,7 +1718,7 @@ static void av_estimate_timings_from_bit_rate(AVFormatContext *ic)
         if (filesize > 0) {
             for(i = 0; i < ic->nb_streams; i++) {
                 st = ic->streams[i];
-                duration= av_rescale(8*filesize, st->time_base.den, ic->bit_rate*(int64_t)st->time_base.num);
+             	duration= av_rescale(8*filesize, st->time_base.den, ic->bit_rate*(int64_t)st->time_base.num);
                 if (st->duration == AV_NOPTS_VALUE)
                     st->duration = duration;
             }
@@ -1805,6 +1834,7 @@ static void av_estimate_timings(AVFormatContext *ic, int64_t old_offset)
     }
     ic->file_size = file_size;
 
+#if 1
     if ((!strcmp(ic->iformat->name, "mpeg") ||
          !strcmp(ic->iformat->name, "mpegts")) &&
         file_size && !url_is_streamed(ic->pb)) {
@@ -1814,11 +1844,16 @@ static void av_estimate_timings(AVFormatContext *ic, int64_t old_offset)
         /* at least one component has timings - we use them for all
            the components */
         fill_all_stream_timings(ic);
-    } else {
+    } else
+#endif
+ 	{
         /* less precise: use bitrate info */
         av_estimate_timings_from_bit_rate(ic);
     }
+	
+
     av_update_stream_timings(ic);
+
 
 #if 0
     {
@@ -2006,6 +2041,10 @@ int av_find_stream_info(AVFormatContext *ic)
     int64_t old_offset = url_ftell(ic->pb);
     int64_t codec_info_duration[MAX_STREAMS]={0};
     int codec_info_nb_frames[MAX_STREAMS]={0};
+	int try_count;
+
+
+	//av_log(NULL, AV_LOG_DEBUG, "==> %s \n\n", __FUNCTION__);
 
     duration_error = av_mallocz(MAX_STREAMS * sizeof(*duration_error));
     if (!duration_error) return AVERROR(ENOMEM);
@@ -2031,6 +2070,7 @@ int av_find_stream_info(AVFormatContext *ic)
         last_dts[i]= AV_NOPTS_VALUE;
     }
 
+	try_count = 0;
     count = 0;
     read_size = 0;
     for(;;) {
@@ -2038,7 +2078,6 @@ int av_find_stream_info(AVFormatContext *ic)
             ret= AVERROR(EINTR);
             break;
         }
-
         /* check if one codec still needs to be handled */
         for(i=0;i<ic->nb_streams;i++) {
             st = ic->streams[i];
@@ -2072,6 +2111,7 @@ int av_find_stream_info(AVFormatContext *ic)
         /* NOTE: a new stream can be added there if no header in file
            (AVFMTCTX_NOHEADER) */
         ret = av_read_frame_internal(ic, &pkt1);
+		
         if (ret < 0) {
             /* EOF or error */
             ret = -1; /* we could not have all the codec parameters before EOF */
@@ -2087,7 +2127,7 @@ int av_find_stream_info(AVFormatContext *ic)
             }
             break;
         }
-
+		
         pkt= add_to_pktbuf(&ic->packet_buffer, &pkt1, &ic->packet_buffer_end);
         if(av_dup_packet(pkt) < 0) {
             av_free(duration_error);
@@ -2096,9 +2136,12 @@ int av_find_stream_info(AVFormatContext *ic)
 
         read_size += pkt->size;
 
+		
+
         st = ic->streams[pkt->stream_index];
         if(codec_info_nb_frames[st->index]>1)
             codec_info_duration[st->index] += pkt->duration;
+
         if (pkt->duration != 0)
             codec_info_nb_frames[st->index]++;
 
@@ -2107,6 +2150,7 @@ int av_find_stream_info(AVFormatContext *ic)
             int64_t last= last_dts[index];
             int64_t duration= pkt->dts - last;
 
+
             if(pkt->dts != AV_NOPTS_VALUE && last != AV_NOPTS_VALUE && duration>0){
                 double dur= duration * av_q2d(st->time_base);
 
@@ -2114,6 +2158,7 @@ int av_find_stream_info(AVFormatContext *ic)
 //                    av_log(NULL, AV_LOG_ERROR, "%f\n", dur);
                 if(duration_count[index] < 2)
                     memset(duration_error[index], 0, sizeof(*duration_error));
+
                 for(i=1; i<MAX_STD_TIMEBASES; i++){
                     int framerate= get_std_framerate(i);
                     int ticks= lrintf(dur*framerate/(1001*12));
@@ -2156,13 +2201,14 @@ int av_find_stream_info(AVFormatContext *ic)
              st->codec->codec_id == CODEC_ID_PBM ||
              st->codec->codec_id == CODEC_ID_PPM ||
              st->codec->codec_id == CODEC_ID_SHORTEN ||
-             (st->codec->codec_id == CODEC_ID_MPEG4 && !st->need_parsing))*/)
+             (st->codec->codec_id == CODEC_ID_MPEG4 && !st->need_parsing))*/
+		){
             try_decode_frame(st, pkt->data, pkt->size);
+		}
 
         if (st->time_base.den > 0 && av_rescale_q(codec_info_duration[st->index], st->time_base, AV_TIME_BASE_Q) >= ic->max_analyze_duration) {
             break;
         }
-        count++;
     }
 
     // close codecs which were opened in try_decode_frame()
@@ -2171,6 +2217,7 @@ int av_find_stream_info(AVFormatContext *ic)
         if(st->codec->codec)
             avcodec_close(st->codec);
     }
+	/* FFMEPG free memory in here. */
     for(i=0;i<ic->nb_streams;i++) {
         st = ic->streams[i];
         if (st->codec->codec_type == CODEC_TYPE_VIDEO) {

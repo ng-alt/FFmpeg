@@ -943,6 +943,13 @@ static av_always_inline float flt16_even(float pf) {
     return pf;
 }
 
+
+av_always_inline av_const float truncf(float x)
+{
+    return (x > 0) ? floor(x) : ceil(x);
+}
+
+
 static av_always_inline float flt16_trunc(float pf) {
     int exp;
     pf = frexpf(pf, &exp);
