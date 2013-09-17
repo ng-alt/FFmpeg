@@ -944,6 +944,7 @@ static av_always_inline float flt16_even(float pf) {
 }
 
 
+// Foxconn, added by Michael J.
 av_always_inline av_const float truncf(float x)
 {
     return (x > 0) ? floor(x) : ceil(x);

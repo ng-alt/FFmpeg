@@ -1,4 +1,5 @@
 include config.mak
+# Foxconn, added by Michael Jiang, 2010.06.03, for minidlna compiling"
 SRC_PATH="$(MINI_DLNA_PATH)/ffmpeg-0.5.1" #"/home/michael/DLNA/ffmpeg-0.5.1"
 SRC_PATH_BARE=$(MINI_DLNA_PATH)/ffmpeg-0.5.1
 BUILD_ROOT="$(MINI_DLNA_PATH)/ffmpeg-0.5.1"

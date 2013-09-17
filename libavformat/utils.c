@@ -577,7 +577,9 @@ int av_read_packet(AVFormatContext *s, AVPacket *pkt)
     int ret;
     AVStream *st;
 	int alloc_count = 0;
+	/* Foxconn, add by Michael for OOM issue. */
 	int mem_alloc_size = 0;
+	/* Foxconn, end by Michael for OOM issue. */
     for(;;){
         AVPacketList *pktl = s->raw_packet_buffer;
 
@@ -1834,6 +1836,7 @@ static void av_estimate_timings(AVFormatContext *ic, int64_t old_offset)
     }
     ic->file_size = file_size;
 
+	/* Foxconn, marked by MJ., for OOM. */
 #if 1
     if ((!strcmp(ic->iformat->name, "mpeg") ||
          !strcmp(ic->iformat->name, "mpegts")) &&
@@ -1846,6 +1849,7 @@ static void av_estimate_timings(AVFormatContext *ic, int64_t old_offset)
         fill_all_stream_timings(ic);
     } else
 #endif
+	/* Foxconn, mared-end by MJ., for OOM . */
  	{
         /* less precise: use bitrate info */
         av_estimate_timings_from_bit_rate(ic);
