@@ -125,6 +125,7 @@ static void *avformat_mutex;
 #    define LIBNAME "LIBAVCODEC_55"
 #endif
 
+#if 0
 #if FF_API_FAST_MALLOC && CONFIG_SHARED && HAVE_SYMVER
 FF_SYMVER(void*, av_fast_realloc, (void *ptr, unsigned int *size, size_t min_size), LIBNAME)
 {
@@ -135,6 +136,7 @@ FF_SYMVER(void, av_fast_malloc, (void *ptr, unsigned int *size, size_t min_size)
 {
     av_fast_malloc(ptr, size, min_size);
 }
+#endif
 #endif
 
 static inline int ff_fast_malloc(void *ptr, unsigned int *size, size_t min_size, int zero_realloc)
