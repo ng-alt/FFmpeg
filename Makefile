@@ -1,8 +1,10 @@
 include config.mak
+ifeq ($(BR2_EXTERNAL),)
 SRC_PATH="$(MINI_DLNA_PATH)/ffmpeg-0.5.1" #"/home/michael/DLNA/ffmpeg-0.5.1"
 SRC_PATH_BARE=$(MINI_DLNA_PATH)/ffmpeg-0.5.1
 BUILD_ROOT="$(MINI_DLNA_PATH)/ffmpeg-0.5.1"
 # Foconn, ended by Michael Jiang, 2010.06.03, for minidlna compiling"
+endif
 SRC_DIR = $(SRC_PATH_BARE)
 
 vpath %.texi $(SRC_PATH_BARE)
