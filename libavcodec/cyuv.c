@@ -24,23 +24,22 @@
  */
 
 /**
- * @file libavcodec/cyuv.c
+ * @file
  * Creative YUV (CYUV) Video Decoder.
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "avcodec.h"
-#include "dsputil.h"
+#include "internal.h"
+#include "libavutil/internal.h"
 
 
 typedef struct CyuvDecodeContext {
     AVCodecContext *avctx;
     int width, height;
-    AVFrame frame;
 } CyuvDecodeContext;
 
 static av_cold int cyuv_decode_init(AVCodecContext *avctx)
@@ -51,18 +50,20 @@ static av_cold int cyuv_decode_init(AVCodecContext *avctx)
     s->width = avctx->width;
     /* width needs to be divisible by 4 for this codec to work */
     if (s->width & 0x3)
-        return -1;
+        return AVERROR_INVALIDDATA;
     s->height = avctx->height;
-    avctx->pix_fmt = PIX_FMT_YUV411P;
 
     return 0;
 }
 
 static int cyuv_decode_frame(AVCodecContext *avctx,
-                             void *data, int *data_size,
-                             const uint8_t *buf, int buf_size)
+                             void *data, int *got_frame,
+                             AVPacket *avpkt)
 {
+    const uint8_t *buf = avpkt->data;
+    int buf_size = avpkt->size;
     CyuvDecodeContext *s=avctx->priv_data;
+    AVFrame *frame = data;
 
     unsigned char *y_plane;
     unsigned char *u_plane;
@@ -80,41 +81,52 @@ static int cyuv_decode_frame(AVCodecContext *avctx,
     int stream_ptr;
     unsigned char cur_byte;
     int pixel_groups;
+    int rawsize = s->height * FFALIGN(s->width,2) * 2;
+    int ret;
 
+    if (avctx->codec_id == AV_CODEC_ID_AURA) {
+        y_table = u_table;
+        u_table = v_table;
+    }
     /* sanity check the buffer size: A buffer has 3x16-bytes tables
      * followed by (height) lines each with 3 bytes to represent groups
      * of 4 pixels. Thus, the total size of the buffer ought to be:
      *    (3 * 16) + height * (width * 3 / 4) */
-    if (buf_size != 48 + s->height * (s->width * 3 / 4)) {
-      av_log(avctx, AV_LOG_ERROR, "ffmpeg: cyuv: got a buffer with %d bytes when %d were expected\n",
-        buf_size,
-        48 + s->height * (s->width * 3 / 4));
-      return -1;
+    if (buf_size == 48 + s->height * (s->width * 3 / 4)) {
+        avctx->pix_fmt = AV_PIX_FMT_YUV411P;
+    } else if(buf_size == rawsize ) {
+        avctx->pix_fmt = AV_PIX_FMT_UYVY422;
+    } else {
+        av_log(avctx, AV_LOG_ERROR, "got a buffer with %d bytes when %d were expected\n",
+               buf_size, 48 + s->height * (s->width * 3 / 4));
+        return AVERROR_INVALIDDATA;
     }
 
     /* pixel data starts 48 bytes in, after 3x16-byte tables */
     stream_ptr = 48;
 
-    if(s->frame.data[0])
-        avctx->release_buffer(avctx, &s->frame);
+    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
+        return ret;
 
-    s->frame.buffer_hints = FF_BUFFER_HINTS_VALID;
-    s->frame.reference = 0;
-    if(avctx->get_buffer(avctx, &s->frame) < 0) {
-        av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
-        return -1;
-    }
+    y_plane = frame->data[0];
+    u_plane = frame->data[1];
+    v_plane = frame->data[2];
 
-    y_plane = s->frame.data[0];
-    u_plane = s->frame.data[1];
-    v_plane = s->frame.data[2];
+    if (buf_size == rawsize) {
+        int linesize = FFALIGN(s->width,2) * 2;
+        y_plane += frame->linesize[0] * s->height;
+        for (stream_ptr = 0; stream_ptr < rawsize; stream_ptr += linesize) {
+            y_plane -= frame->linesize[0];
+            memcpy(y_plane, buf+stream_ptr, linesize);
+        }
+    } else {
 
     /* iterate through each line in the height */
     for (y_ptr = 0, u_ptr = 0, v_ptr = 0;
-         y_ptr < (s->height * s->frame.linesize[0]);
-         y_ptr += s->frame.linesize[0] - s->width,
-         u_ptr += s->frame.linesize[1] - s->width / 4,
-         v_ptr += s->frame.linesize[2] - s->width / 4) {
+         y_ptr < (s->height * frame->linesize[0]);
+         y_ptr += frame->linesize[0] - s->width,
+         u_ptr += frame->linesize[1] - s->width / 4,
+         v_ptr += frame->linesize[2] - s->width / 4) {
 
         /* reset predictors */
         cur_byte = buf[stream_ptr++];
@@ -156,24 +168,35 @@ static int cyuv_decode_frame(AVCodecContext *avctx,
 
         }
     }
+    }
 
-    *data_size=sizeof(AVFrame);
-    *(AVFrame*)data= s->frame;
+    *got_frame = 1;
 
     return buf_size;
 }
 
-AVCodec cyuv_decoder = {
-    "cyuv",
-    CODEC_TYPE_VIDEO,
-    CODEC_ID_CYUV,
-    sizeof(CyuvDecodeContext),
-    cyuv_decode_init,
-    NULL,
-    NULL,
-    cyuv_decode_frame,
-    CODEC_CAP_DR1,
-    NULL,
-    .long_name = NULL_IF_CONFIG_SMALL("Creative YUV (CYUV)"),
+#if CONFIG_AURA_DECODER
+AVCodec ff_aura_decoder = {
+    .name           = "aura",
+    .long_name      = NULL_IF_CONFIG_SMALL("Auravision AURA"),
+    .type           = AVMEDIA_TYPE_VIDEO,
+    .id             = AV_CODEC_ID_AURA,
+    .priv_data_size = sizeof(CyuvDecodeContext),
+    .init           = cyuv_decode_init,
+    .decode         = cyuv_decode_frame,
+    .capabilities   = CODEC_CAP_DR1,
 };
+#endif
 
+#if CONFIG_CYUV_DECODER
+AVCodec ff_cyuv_decoder = {
+    .name           = "cyuv",
+    .long_name      = NULL_IF_CONFIG_SMALL("Creative YUV (CYUV)"),
+    .type           = AVMEDIA_TYPE_VIDEO,
+    .id             = AV_CODEC_ID_CYUV,
+    .priv_data_size = sizeof(CyuvDecodeContext),
+    .init           = cyuv_decode_init,
+    .decode         = cyuv_decode_frame,
+    .capabilities   = CODEC_CAP_DR1,
+};
+#endif

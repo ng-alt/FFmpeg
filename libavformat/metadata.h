@@ -22,27 +22,23 @@
 #define AVFORMAT_METADATA_H
 
 /**
- * @file libavformat/metadata.h
+ * @file
  * internal metadata API header
  * see avformat.h or the public API!
  */
 
 
 #include "avformat.h"
+#include "libavutil/dict.h"
 
-struct AVMetadata{
-    int count;
-    AVMetadataTag *elems;
-};
-
-struct AVMetadataConv{
+typedef struct AVMetadataConv {
     const char *native;
     const char *generic;
-};
+} AVMetadataConv;
 
-#if LIBAVFORMAT_VERSION_MAJOR < 53
-void ff_metadata_demux_compat(AVFormatContext *s);
-void ff_metadata_mux_compat(AVFormatContext *s);
-#endif
+void ff_metadata_conv(AVDictionary **pm, const AVMetadataConv *d_conv,
+                                       const AVMetadataConv *s_conv);
+void ff_metadata_conv_ctx(AVFormatContext *ctx, const AVMetadataConv *d_conv,
+                                                const AVMetadataConv *s_conv);
 
 #endif /* AVFORMAT_METADATA_H */

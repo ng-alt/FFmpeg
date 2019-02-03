@@ -17,8 +17,8 @@
  */
 
 /**
- * @file libavcodec/aandcttab.h
- * AAN (Arai Agui Nakajima) (I)DCT tables
+ * @file
+ * AAN (Arai, Agui and Nakajima) (I)DCT tables
  */
 
 #ifndef AVCODEC_AANDCTTAB_H

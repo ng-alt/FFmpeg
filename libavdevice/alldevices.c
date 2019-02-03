@@ -19,21 +19,23 @@
  */
 
 #include "config.h"
-#include "libavformat/avformat.h"
 #include "avdevice.h"
 
-unsigned avdevice_version(void)
-{
-    return LIBAVDEVICE_VERSION_INT;
-}
+#define REGISTER_OUTDEV(X, x)                                           \
+    {                                                                   \
+        extern AVOutputFormat ff_##x##_muxer;                           \
+        if (CONFIG_##X##_OUTDEV)                                        \
+            av_register_output_format(&ff_##x##_muxer);                 \
+    }
 
-#define REGISTER_MUXER(X,x) { \
-          extern AVOutputFormat x##_muxer; \
-          if(CONFIG_##X##_MUXER)   av_register_output_format(&x##_muxer); }
-#define REGISTER_DEMUXER(X,x) { \
-          extern AVInputFormat x##_demuxer; \
-          if(CONFIG_##X##_DEMUXER) av_register_input_format(&x##_demuxer); }
-#define REGISTER_MUXDEMUX(X,x)  REGISTER_MUXER(X,x); REGISTER_DEMUXER(X,x)
+#define REGISTER_INDEV(X, x)                                            \
+    {                                                                   \
+        extern AVInputFormat ff_##x##_demuxer;                          \
+        if (CONFIG_##X##_INDEV)                                         \
+            av_register_input_format(&ff_##x##_demuxer);                \
+    }
+
+#define REGISTER_INOUTDEV(X, x) REGISTER_OUTDEV(X, x); REGISTER_INDEV(X, x)
 
 void avdevice_register_all(void)
 {
@@ -44,16 +46,32 @@ void avdevice_register_all(void)
     initialized = 1;
 
     /* devices */
-    REGISTER_MUXDEMUX (ALSA, alsa);
-    REGISTER_MUXDEMUX (AUDIO_BEOS, audio_beos);
-    REGISTER_DEMUXER  (BKTR, bktr);
-    REGISTER_DEMUXER  (DV1394, dv1394);
-    REGISTER_MUXDEMUX (OSS, oss);
-    REGISTER_DEMUXER  (V4L2, v4l2);
-    REGISTER_DEMUXER  (V4L, v4l);
-    REGISTER_DEMUXER  (VFWCAP, vfwcap);
-    REGISTER_DEMUXER  (X11_GRAB_DEVICE, x11_grab_device);
+    REGISTER_INOUTDEV(ALSA,             alsa);
+    REGISTER_INDEV   (AVFOUNDATION,     avfoundation);
+    REGISTER_INDEV   (BKTR,             bktr);
+    REGISTER_OUTDEV  (CACA,             caca);
+    REGISTER_OUTDEV  (DECKLINK,         decklink);
+    REGISTER_INDEV   (DSHOW,            dshow);
+    REGISTER_INDEV   (DV1394,           dv1394);
+    REGISTER_INOUTDEV(FBDEV,            fbdev);
+    REGISTER_INDEV   (GDIGRAB,          gdigrab);
+    REGISTER_INDEV   (IEC61883,         iec61883);
+    REGISTER_INDEV   (JACK,             jack);
+    REGISTER_INDEV   (LAVFI,            lavfi);
+    REGISTER_INDEV   (OPENAL,           openal);
+    REGISTER_OUTDEV  (OPENGL,           opengl);
+    REGISTER_INOUTDEV(OSS,              oss);
+    REGISTER_INOUTDEV(PULSE,            pulse);
+    REGISTER_INDEV   (QTKIT,            qtkit);
+    REGISTER_OUTDEV  (SDL,              sdl);
+    REGISTER_INOUTDEV(SNDIO,            sndio);
+    REGISTER_INOUTDEV(V4L2,             v4l2);
+//    REGISTER_INDEV   (V4L,              v4l
+    REGISTER_INDEV   (VFWCAP,           vfwcap);
+    REGISTER_INDEV   (X11GRAB,          x11grab);
+    REGISTER_OUTDEV  (XV,               xv);
 
     /* external libraries */
-    REGISTER_DEMUXER  (LIBDC1394, libdc1394);
+    REGISTER_INDEV   (LIBCDIO,          libcdio);
+    REGISTER_INDEV   (LIBDC1394,        libdc1394);
 }

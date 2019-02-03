@@ -20,7 +20,7 @@
  */
 
 /**
- * @file libavutil/pca.c
+ * @file
  * principal component analysis (PCA)
  */
 
@@ -32,6 +32,7 @@ typedef struct PCA{
     int n;
     double *covariance;
     double *mean;
+    double *z;
 }PCA;
 
 PCA *ff_pca_init(int n){
@@ -39,11 +40,12 @@ PCA *ff_pca_init(int n){
     if(n<=0)
         return NULL;
 
-    pca= av_mallocz(sizeof(PCA));
+    pca= av_mallocz(sizeof(*pca));
     pca->n= n;
+    pca->z = av_malloc_array(n, sizeof(*pca->z));
     pca->count=0;
-    pca->covariance= av_mallocz(sizeof(double)*n*n);
-    pca->mean= av_mallocz(sizeof(double)*n);
+    pca->covariance= av_calloc(n*n, sizeof(double));
+    pca->mean= av_calloc(n, sizeof(double));
 
     return pca;
 }
@@ -51,6 +53,7 @@ PCA *ff_pca_init(int n){
 void ff_pca_free(PCA *pca){
     av_freep(&pca->covariance);
     av_freep(&pca->mean);
+    av_freep(&pca->z);
     av_free(pca);
 }
 
@@ -70,7 +73,7 @@ int ff_pca(PCA *pca, double *eigenvector, double *eigenvalue){
     int i, j, pass;
     int k=0;
     const int n= pca->n;
-    double z[n];
+    double *z = pca->z;
 
     memset(eigenvector, 0, sizeof(double)*n*n);
 
@@ -164,9 +167,9 @@ int ff_pca(PCA *pca, double *eigenvector, double *eigenvalue){
 #ifdef TEST
 
 #undef printf
-#undef random
 #include <stdio.h>
 #include <stdlib.h>
+#include "lfg.h"
 
 int main(void){
     PCA *pca;
@@ -174,15 +177,18 @@ int main(void){
 #define LEN 8
     double eigenvector[LEN*LEN];
     double eigenvalue[LEN];
+    AVLFG prng;
+
+    av_lfg_init(&prng, 1);
 
     pca= ff_pca_init(LEN);
 
     for(i=0; i<9000000; i++){
         double v[2*LEN+100];
         double sum=0;
-        int pos= random()%LEN;
-        int v2= (random()%101) - 50;
-        v[0]= (random()%101) - 50;
+        int pos = av_lfg_get(&prng) % LEN;
+        int v2  = av_lfg_get(&prng) % 101 - 50;
+        v[0]    = av_lfg_get(&prng) % 101 - 50;
         for(j=1; j<8; j++){
             if(j<=pos) v[j]= v[0];
             else       v[j]= v2;
@@ -191,7 +197,7 @@ int main(void){
 /*        for(j=0; j<LEN; j++){
             v[j] -= v[pos];
         }*/
-//        sum += random()%10;
+//        sum += av_lfg_get(&prng) % 10;
 /*        for(j=0; j<LEN; j++){
             v[j] -= sum/LEN;
         }*/
@@ -215,7 +221,6 @@ int main(void){
         printf("\n");
     }
 
-#if 1
     for(i=0; i<LEN; i++){
         double v[LEN];
         double error=0;
@@ -230,7 +235,7 @@ int main(void){
         printf("%f ", error);
     }
     printf("\n");
-#endif
+
     for(i=0; i<LEN; i++){
         for(j=0; j<LEN; j++){
             printf("%9.6f ", eigenvector[i + j*LEN]);

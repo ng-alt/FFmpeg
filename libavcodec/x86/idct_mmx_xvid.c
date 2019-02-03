@@ -40,7 +40,14 @@
  */
 
 #include <inttypes.h>
+
+#include "config.h"
 #include "libavcodec/avcodec.h"
+#include "libavutil/mem.h"
+#include "idct_xvid.h"
+#include "idctdsp.h"
+
+#if HAVE_MMX_INLINE
 
 //=============================================================================
 // Macros and other preprocessor constants
@@ -64,13 +71,13 @@
 //-----------------------------------------------------------------------------
 
 
-DECLARE_ALIGNED(8, static const int16_t, tg_1_16[4*4]) = {
+DECLARE_ALIGNED(8, static const int16_t, tg_1_16)[4*4] = {
   13036,13036,13036,13036,        // tg * (2<<16) + 0.5
   27146,27146,27146,27146,        // tg * (2<<16) + 0.5
   -21746,-21746,-21746,-21746,    // tg * (2<<16) + 0.5
   23170,23170,23170,23170};       // cos * (2<<15) + 0.5
 
-DECLARE_ALIGNED(8, static const int32_t, rounder_0[2*8]) = {
+DECLARE_ALIGNED(8, static const int32_t, rounder_0)[2*8] = {
   65536,65536,
   3597,3597,
   2260,2260,
@@ -140,7 +147,7 @@ DECLARE_ALIGNED(8, static const int32_t, rounder_0[2*8]) = {
 //-----------------------------------------------------------------------------
 
 // Table for rows 0,4 - constants are multiplied by cos_4_16
-DECLARE_ALIGNED(8, static const int16_t, tab_i_04_mmx[32*4]) = {
+DECLARE_ALIGNED(8, static const int16_t, tab_i_04_mmx)[32*4] = {
   16384,16384,16384,-16384,       // movq-> w06 w04 w02 w00
   21407,8867,8867,-21407,         // w07 w05 w03 w01
   16384,-16384,16384,16384,       // w14 w12 w10 w08
@@ -182,7 +189,7 @@ DECLARE_ALIGNED(8, static const int16_t, tab_i_04_mmx[32*4]) = {
 //-----------------------------------------------------------------------------
 
 // %3 for rows 0,4 - constants are multiplied by cos_4_16
-DECLARE_ALIGNED(8, static const int16_t, tab_i_04_xmm[32*4]) = {
+DECLARE_ALIGNED(8, static const int16_t, tab_i_04_xmm)[32*4] = {
   16384,21407,16384,8867,      // movq-> w05 w04 w01 w00
   16384,8867,-16384,-21407,    // w07 w06 w03 w02
   16384,-8867,16384,-21407,    // w13 w12 w09 w08
@@ -500,12 +507,29 @@ __asm__ volatile(
     :: "r"(block), "r"(rounder_0), "r"(tab_i_04_mmx), "r"(tg_1_16));
 }
 
+void ff_idct_xvid_mmx_put(uint8_t *dest, int line_size, int16_t *block)
+{
+    ff_idct_xvid_mmx(block);
+    ff_put_pixels_clamped_mmx(block, dest, line_size);
+}
+
+void ff_idct_xvid_mmx_add(uint8_t *dest, int line_size, int16_t *block)
+{
+    ff_idct_xvid_mmx(block);
+    ff_add_pixels_clamped_mmx(block, dest, line_size);
+}
+
+#endif /* HAVE_MMX_INLINE */
+
+#if HAVE_MMXEXT_INLINE
+
 //-----------------------------------------------------------------------------
 // void idct_xmm(uint16_t block[64]);
 //-----------------------------------------------------------------------------
 
 
-void ff_idct_xvid_mmx2(short *block){
+void ff_idct_xvid_mmxext(short *block)
+{
 __asm__ volatile(
             //# Process each row
     DCT_8_INV_ROW_XMM(0*16(%0), 0*16(%0), 64*0(%2), 8*0(%1))
@@ -523,3 +547,16 @@ __asm__ volatile(
     :: "r"(block), "r"(rounder_0), "r"(tab_i_04_xmm), "r"(tg_1_16));
 }
 
+void ff_idct_xvid_mmxext_put(uint8_t *dest, int line_size, int16_t *block)
+{
+    ff_idct_xvid_mmxext(block);
+    ff_put_pixels_clamped_mmx(block, dest, line_size);
+}
+
+void ff_idct_xvid_mmxext_add(uint8_t *dest, int line_size, int16_t *block)
+{
+    ff_idct_xvid_mmxext(block);
+    ff_add_pixels_clamped_mmx(block, dest, line_size);
+}
+
+#endif /* HAVE_MMXEXT_INLINE */

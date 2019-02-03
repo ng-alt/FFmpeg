@@ -25,36 +25,46 @@
 #define AVCODEC_DNXHDENC_H
 
 #include <stdint.h>
-#include "libavcodec/mpegvideo.h"
-#include "libavcodec/dnxhddata.h"
 
-typedef struct {
+#include "mpegvideo.h"
+#include "dnxhddata.h"
+
+typedef struct RCCMPEntry {
     uint16_t mb;
     int value;
 } RCCMPEntry;
 
-typedef struct {
+typedef struct RCEntry {
     int ssd;
     int bits;
 } RCEntry;
 
 typedef struct DNXHDEncContext {
+    AVClass *class;
+    BlockDSPContext bdsp;
     MpegEncContext m; ///< Used for quantization dsp functions
 
-    AVFrame frame;
     int cid;
     const CIDEntry *cid_table;
     uint8_t *msip; ///< Macroblock Scan Indexes Payload
     uint32_t *slice_size;
+    uint32_t *slice_offs;
 
     struct DNXHDEncContext *thread[MAX_THREADS];
 
+    // Because our samples are either 8 or 16 bits for 8-bit and 10-bit
+    // encoding respectively, these refer either to bytes or to two-byte words.
     unsigned dct_y_offset;
     unsigned dct_uv_offset;
+    unsigned block_width_l2;
+
     int interlaced;
     int cur_field;
 
-    DECLARE_ALIGNED_16(DCTELEM, blocks[8][64]);
+    int nitris_compat;
+    unsigned min_padding;
+
+    DECLARE_ALIGNED(16, int16_t, blocks)[8][64];
 
     int      (*qmatrix_c)     [64];
     int      (*qmatrix_l)     [64];
@@ -74,17 +84,16 @@ typedef struct DNXHDEncContext {
     unsigned qscale;
     unsigned lambda;
 
-    unsigned thread_size;
-
     uint16_t *mb_bits;
     uint8_t  *mb_qscale;
 
     RCCMPEntry *mb_cmp;
     RCEntry   (*mb_rc)[8160];
 
-    void (*get_pixels_8x4_sym)(DCTELEM */*align 16*/, const uint8_t *, int);
+    void (*get_pixels_8x4_sym)(int16_t * /* align 16 */,
+                               const uint8_t *, ptrdiff_t);
 } DNXHDEncContext;
 
-void ff_dnxhd_init_mmx(DNXHDEncContext *ctx);
+void ff_dnxhdenc_init_x86(DNXHDEncContext *ctx);
 
 #endif /* AVCODEC_DNXHDENC_H */

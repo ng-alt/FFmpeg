@@ -39,6 +39,7 @@ static const uint8_t IP_shuffle[] = {
 };
 #undef T
 
+#if CONFIG_SMALL || defined(GENTABLES)
 #define T(a, b, c, d) 32-a,32-b,32-c,32-d
 static const uint8_t P_shuffle[] = {
     T(16,  7, 20, 21),
@@ -51,6 +52,7 @@ static const uint8_t P_shuffle[] = {
     T(22, 11,  4, 25)
 };
 #undef T
+#endif
 
 #define T(a, b, c, d, e, f, g) 64-a,64-b,64-c,64-d,64-e,64-f,64-g
 static const uint8_t PC1_shuffle[] = {
@@ -240,7 +242,7 @@ static uint32_t f_func(uint32_t r, uint64_t k) {
 }
 
 /**
- * \brief rotate the two halves of the expanded 56 bit key each 1 bit left
+ * @brief rotate the two halves of the expanded 56 bit key each 1 bit left
  *
  * Note: the specification calls this "shift", so I kept it although
  * it is confusing.
@@ -284,15 +286,7 @@ static uint64_t des_encdec(uint64_t in, uint64_t K[16], int decrypt) {
     return in;
 }
 
-#if LIBAVUTIL_VERSION_MAJOR < 50
-uint64_t ff_des_encdec(uint64_t in, uint64_t key, int decrypt) {
-    uint64_t K[16];
-    gen_roundkeys(K, key);
-    return des_encdec(in, K, decrypt);
-}
-#endif
-
-int av_des_init(AVDES *d, const uint8_t *key, int key_bits, int decrypt) {
+int av_des_init(AVDES *d, const uint8_t *key, int key_bits, av_unused int decrypt) {
     if (key_bits != 64 && key_bits != 192)
         return -1;
     d->triple_des = key_bits > 64;
@@ -304,11 +298,11 @@ int av_des_init(AVDES *d, const uint8_t *key, int key_bits, int decrypt) {
     return 0;
 }
 
-void av_des_crypt(AVDES *d, uint8_t *dst, const uint8_t *src, int count, uint8_t *iv, int decrypt) {
-    uint64_t iv_val = iv ? be2me_64(*(uint64_t *)iv) : 0;
+static void av_des_crypt_mac(AVDES *d, uint8_t *dst, const uint8_t *src, int count, uint8_t *iv, int decrypt, int mac) {
+    uint64_t iv_val = iv ? AV_RB64(iv) : 0;
     while (count-- > 0) {
         uint64_t dst_val;
-        uint64_t src_val = src ? be2me_64(*(const uint64_t *)src) : 0;
+        uint64_t src_val = src ? AV_RB64(src) : 0;
         if (decrypt) {
             uint64_t tmp = src_val;
             if (d->triple_des) {
@@ -325,21 +319,29 @@ void av_des_crypt(AVDES *d, uint8_t *dst, const uint8_t *src, int count, uint8_t
             }
             iv_val = iv ? dst_val : 0;
         }
-        *(uint64_t *)dst = be2me_64(dst_val);
+        AV_WB64(dst, dst_val);
         src += 8;
-        dst += 8;
+        if (!mac)
+            dst += 8;
     }
     if (iv)
-        *(uint64_t *)iv = be2me_64(iv_val);
+        AV_WB64(iv, iv_val);
+}
+
+void av_des_crypt(AVDES *d, uint8_t *dst, const uint8_t *src, int count, uint8_t *iv, int decrypt) {
+    av_des_crypt_mac(d, dst, src, count, iv, decrypt, 0);
+}
+
+void av_des_mac(AVDES *d, uint8_t *dst, const uint8_t *src, int count) {
+    av_des_crypt_mac(d, dst, src, count, (uint8_t[8]){0}, 0, 1);
 }
 
 #ifdef TEST
-#undef printf
-#undef rand
-#undef srand
 #include <stdlib.h>
 #include <stdio.h>
-#include <sys/time.h>
+
+#include "time.h"
+
 static uint64_t rand64(void) {
     uint64_t r = rand();
     r = (r << 32) | rand();
@@ -347,17 +349,17 @@ static uint64_t rand64(void) {
 }
 
 static const uint8_t test_key[] = {0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0};
-static const DECLARE_ALIGNED(8, uint8_t, plain[]) = {0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10};
-static const DECLARE_ALIGNED(8, uint8_t, crypt[]) = {0x4a, 0xb6, 0x5b, 0x3d, 0x4b, 0x06, 0x15, 0x18};
-static DECLARE_ALIGNED(8, uint8_t, tmp[8]);
-static DECLARE_ALIGNED(8, uint8_t, large_buffer[10002][8]);
+static const DECLARE_ALIGNED(8, uint8_t, plain)[] = {0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10};
+static const DECLARE_ALIGNED(8, uint8_t, crypt)[] = {0x4a, 0xb6, 0x5b, 0x3d, 0x4b, 0x06, 0x15, 0x18};
+static DECLARE_ALIGNED(8, uint8_t, tmp)[8];
+static DECLARE_ALIGNED(8, uint8_t, large_buffer)[10002][8];
 static const uint8_t cbc_key[] = {
     0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
     0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01,
     0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23
 };
 
-int run_test(int cbc, int decrypt) {
+static int run_test(int cbc, int decrypt) {
     AVDES d;
     int delay = cbc && !decrypt ? 2 : 1;
     uint64_t res;
@@ -386,20 +388,18 @@ int main(void) {
 #ifdef GENTABLES
     int j;
 #endif
-    struct timeval tv;
     uint64_t key[3];
     uint64_t data;
     uint64_t ct;
-    gettimeofday(&tv, NULL);
-    srand(tv.tv_sec * 1000 * 1000 + tv.tv_usec);
-#if LIBAVUTIL_VERSION_MAJOR < 50
+    uint64_t roundkeys[16];
+    srand(av_gettime());
     key[0] = AV_RB64(test_key);
     data = AV_RB64(plain);
-    if (ff_des_encdec(data, key[0], 0) != AV_RB64(crypt)) {
+    gen_roundkeys(roundkeys, key[0]);
+    if (des_encdec(data, roundkeys, 0) != AV_RB64(crypt)) {
         printf("Test 1 failed\n");
         return 1;
     }
-#endif
     av_des_init(&d, test_key, 64, 0);
     av_des_crypt(&d, tmp, plain, 1, NULL, 0);
     if (memcmp(tmp, crypt, sizeof(crypt))) {
@@ -410,13 +410,13 @@ int main(void) {
         printf("Partial Monte-Carlo test failed\n");
         return 1;
     }
-    for (i = 0; i < 1000000; i++) {
+    for (i = 0; i < 1000; i++) {
         key[0] = rand64(); key[1] = rand64(); key[2] = rand64();
         data = rand64();
-        av_des_init(&d, key, 192, 0);
-        av_des_crypt(&d, &ct, &data, 1, NULL, 0);
-        av_des_init(&d, key, 192, 1);
-        av_des_crypt(&d, &ct, &ct, 1, NULL, 1);
+        av_des_init(&d, (uint8_t*)key, 192, 0);
+        av_des_crypt(&d, (uint8_t*)&ct, (uint8_t*)&data, 1, NULL, 0);
+        av_des_init(&d, (uint8_t*)key, 192, 1);
+        av_des_crypt(&d, (uint8_t*)&ct, (uint8_t*)&ct, 1, NULL, 1);
         if (ct != data) {
             printf("Test 2 failed\n");
             return 1;

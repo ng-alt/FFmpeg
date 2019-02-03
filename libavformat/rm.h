@@ -23,8 +23,10 @@
 #define AVFORMAT_RM_H
 
 #include "avformat.h"
+#include "internal.h"
 
-extern const char *ff_rm_metadata[4];
+extern const char * const ff_rm_metadata[4];
+extern const AVCodecTag ff_rm_codec_tags[];
 
 typedef struct RMStream RMStream;
 
@@ -32,13 +34,13 @@ RMStream *ff_rm_alloc_rmstream (void);
 void      ff_rm_free_rmstream  (RMStream *rms);
 
 /*< input format for Realmedia-style RTSP streams */
-extern AVInputFormat rdt_demuxer;
+extern AVInputFormat ff_rdt_demuxer;
 
 /**
  * Read the MDPR chunk, which contains stream-specific codec initialization
  * parameters.
  *
- * @param s context containing RMContext and ByteIOContext for stream reading
+ * @param s context containing RMContext and AVIOContext for stream reading
  * @param pb context to read the data from
  * @param st the stream that the MDPR chunk belongs to and where to store the
  *           parameters read from the chunk into
@@ -46,14 +48,14 @@ extern AVInputFormat rdt_demuxer;
  * @param codec_data_size size of the MDPR chunk
  * @return 0 on success, errno codes on error
  */
-int ff_rm_read_mdpr_codecdata (AVFormatContext *s, ByteIOContext *pb,
+int ff_rm_read_mdpr_codecdata (AVFormatContext *s, AVIOContext *pb,
                                AVStream *st, RMStream *rst,
-                               int codec_data_size);
+                               int codec_data_size, const uint8_t *mime);
 
 /**
  * Parse one rm-stream packet from the input bytestream.
  *
- * @param s context containing RMContext and ByteIOContext for stream reading
+ * @param s context containing RMContext and AVIOContext for stream reading
  * @param pb context to read the data from
  * @param st stream to which the packet to be read belongs
  * @param rst Real-specific stream information
@@ -61,16 +63,15 @@ int ff_rm_read_mdpr_codecdata (AVFormatContext *s, ByteIOContext *pb,
  * @param pkt packet location to store the parsed packet data
  * @param seq pointer to an integer containing the sequence number, may be
  *            updated
- * @param flags pointer to an integer containing the packet flags, may be
-                updated
- * @param ts pointer to timestamp, may be updated
- * @return >=0 on success (where >0 indicates there are cached samples that
- *         can be retrieved with subsequent calls to ff_rm_retrieve_cache()),
- *         errno codes on error
+ * @param flags the packet flags
+ * @param ts timestamp of the current packet
+ * @return <0 on error, 0 if a packet was placed in the pkt pointer. A
+ *         value >0 means that no data was placed in pkt, but that cached
+ *         data is available by calling ff_rm_retrieve_cache().
  */
-int ff_rm_parse_packet (AVFormatContext *s, ByteIOContext *pb,
+int ff_rm_parse_packet (AVFormatContext *s, AVIOContext *pb,
                         AVStream *st, RMStream *rst, int len,
-                        AVPacket *pkt, int *seq, int *flags, int64_t *ts);
+                        AVPacket *pkt, int *seq, int flags, int64_t ts);
 
 /**
  * Retrieve one cached packet from the rm-context. The real container can
@@ -80,15 +81,15 @@ int ff_rm_parse_packet (AVFormatContext *s, ByteIOContext *pb,
  * a positive number, the amount of cached packets. Using this function, each
  * of those packets can be retrieved sequentially.
  *
- * @param s context containing RMContext and ByteIOContext for stream reading
+ * @param s context containing RMContext and AVIOContext for stream reading
  * @param pb context to read the data from
  * @param st stream that this packet belongs to
  * @param rst Real-specific stream information
  * @param pkt location to store the packet data
- * @returns the number of samples left for subsequent calls to this same
+ * @return the number of samples left for subsequent calls to this same
  *          function, or 0 if all samples have been retrieved.
  */
-int ff_rm_retrieve_cache (AVFormatContext *s, ByteIOContext *pb,
+int ff_rm_retrieve_cache (AVFormatContext *s, AVIOContext *pb,
                           AVStream *st, RMStream *rst, AVPacket *pkt);
 
 #endif /* AVFORMAT_RM_H */

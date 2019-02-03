@@ -23,7 +23,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "asm.S"
+#include "libavutil/arm/asm.S"
 
 #define W1  22725  //cos(i*M_PI/16)*sqrt(2)*(1<<14) + 0.5
 #define W2  21407  //cos(i*M_PI/16)*sqrt(2)*(1<<14) + 0.5
@@ -45,8 +45,6 @@
 #define w7 d1[2]
 #define w4c d1[3]
 
-        .fpu neon
-
         .macro idct_col4_top
         vmull.s16       q7,  d6,  w2    /* q9   = W2 * col[2] */
         vmull.s16       q8,  d6,  w6    /* q10  = W6 * col[2] */
@@ -67,6 +65,19 @@
 
         .text
         .align 6
+
+function idct_row4_pld_neon
+        pld             [r0]
+        add             r3,  r0,  r1,  lsl #2
+        pld             [r0, r1]
+        pld             [r0, r1, lsl #1]
+A       pld             [r3, -r1]
+        pld             [r3]
+        pld             [r3, r1]
+        add             r3,  r3,  r1,  lsl #1
+        pld             [r3]
+        pld             [r3, r1]
+endfunc
 
 function idct_row4_neon
         vmov.i32        q15, #(1<<(ROW_SHIFT-1))
@@ -136,7 +147,7 @@ function idct_row4_neon
         vst1.64         {d6-d9},  [r2,:128]!
 
         bx              lr
-        .endfunc
+endfunc
 
 function idct_col4_neon
         mov             ip,  #16
@@ -148,11 +159,12 @@ function idct_col4_neon
         vmull.s16       q15, d30, w4 /* q15 = W4*(col[0]+(1<<COL_SHIFT-1)/W4)*/
         vld1.64         {d8}, [r2,:64], ip /* d5 = col[3] */
 
-        ldrd            r4,  [r2]
-        ldrd            r6,  [r2, #16]
+        ldrd            r4,  r5,  [r2]
+        ldrd            r6,  r7,  [r2, #16]
         orrs            r4,  r4,  r5
 
         idct_col4_top
+        it              eq
         addeq           r2,  r2,  #16
         beq             1f
 
@@ -164,7 +176,8 @@ function idct_col4_neon
         vadd.i32        q14, q14, q7
 
 1:      orrs            r6,  r6,  r7
-        ldrd            r4,  [r2, #16]
+        ldrd            r4,  r5,  [r2, #16]
+        it              eq
         addeq           r2,  r2,  #16
         beq             2f
 
@@ -175,7 +188,8 @@ function idct_col4_neon
         vmlal.s16       q6,  d5,  w3    /* q6  += W3 * col[5] */
 
 2:      orrs            r4,  r4,  r5
-        ldrd            r4,  [r2, #16]
+        ldrd            r4,  r5,  [r2, #16]
+        it              eq
         addeq           r2,  r2,  #16
         beq             3f
 
@@ -188,6 +202,7 @@ function idct_col4_neon
         vadd.i32        q13, q13, q8
 
 3:      orrs            r4,  r4,  r5
+        it              eq
         addeq           r2,  r2,  #16
         beq             4f
 
@@ -207,7 +222,7 @@ function idct_col4_neon
         vsubhn.i32      d6,  q14, q6
 
         bx              lr
-        .endfunc
+endfunc
 
         .align 6
 
@@ -226,13 +241,11 @@ function idct_col4_st8_neon
         vst1.32         {d5[1]}, [r0,:32], r1
 
         bx              lr
-        .endfunc
+endfunc
 
-        .section .rodata
-        .align 4
-idct_coeff_neon:
+const   idct_coeff_neon, align=4
         .short W1, W2, W3, W4, W5, W6, W7, W4c
-        .previous
+endconst
 
         .macro idct_start data
         push            {r4-r7, lr}
@@ -248,11 +261,11 @@ idct_coeff_neon:
         pop             {r4-r7, pc}
         .endm
 
-/* void ff_simple_idct_put_neon(uint8_t *dst, int line_size, DCTELEM *data); */
+/* void ff_simple_idct_put_neon(uint8_t *dst, int line_size, int16_t *data); */
 function ff_simple_idct_put_neon, export=1
         idct_start      r2
 
-        bl              idct_row4_neon
+        bl              idct_row4_pld_neon
         bl              idct_row4_neon
         add             r2,  r2,  #-128
         bl              idct_col4_neon
@@ -264,7 +277,7 @@ function ff_simple_idct_put_neon, export=1
         bl              idct_col4_st8_neon
 
         idct_end
-        .endfunc
+endfunc
 
         .align 6
 
@@ -301,13 +314,13 @@ function idct_col4_add8_neon
         vst1.32         {d5[1]},  [ip,:32], r1
 
         bx              lr
-        .endfunc
+endfunc
 
-/* void ff_simple_idct_add_neon(uint8_t *dst, int line_size, DCTELEM *data); */
+/* void ff_simple_idct_add_neon(uint8_t *dst, int line_size, int16_t *data); */
 function ff_simple_idct_add_neon, export=1
         idct_start      r2
 
-        bl              idct_row4_neon
+        bl              idct_row4_pld_neon
         bl              idct_row4_neon
         add             r2,  r2,  #-128
         bl              idct_col4_neon
@@ -319,7 +332,7 @@ function ff_simple_idct_add_neon, export=1
         bl              idct_col4_add8_neon
 
         idct_end
-        .endfunc
+endfunc
 
         .align 6
 
@@ -340,9 +353,9 @@ function idct_col4_st16_neon
         vst1.64         {d9}, [r2,:64], ip
 
         bx              lr
-        .endfunc
+endfunc
 
-/* void ff_simple_idct_neon(DCTELEM *data); */
+/* void ff_simple_idct_neon(int16_t *data); */
 function ff_simple_idct_neon, export=1
         idct_start      r0
 
@@ -359,4 +372,4 @@ function ff_simple_idct_neon, export=1
         bl              idct_col4_st16_neon
 
         idct_end
-        .endfunc
+endfunc

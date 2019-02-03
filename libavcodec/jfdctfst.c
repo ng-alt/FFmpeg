@@ -1,6 +1,4 @@
 /*
- * jfdctfst.c
- *
  * This file is part of the Independent JPEG Group's software.
  *
  * The authors make NO WARRANTY or representation, either express or implied,
@@ -64,19 +62,18 @@
  */
 
 /**
- * @file libavcodec/jfdctfst.c
+ * @file
  * Independent JPEG Group's fast AAN dct.
  */
 
 #include <stdlib.h>
 #include <stdio.h>
 #include "libavutil/common.h"
-#include "dsputil.h"
+#include "dct.h"
 
 #define DCTSIZE 8
 #define GLOBAL(x) x
 #define RIGHT_SHIFT(x, n) ((x) >> (n))
-#define SHIFT_TEMPS
 
 /*
  * This module is specialized to the case DCTSIZE = 8.
@@ -139,19 +136,18 @@
 #endif
 
 
-/* Multiply a DCTELEM variable by an int32_t constant, and immediately
- * descale to yield a DCTELEM result.
+/* Multiply a int16_t variable by an int32_t constant, and immediately
+ * descale to yield a int16_t result.
  */
 
-#define MULTIPLY(var,const)  ((DCTELEM) DESCALE((var) * (const), CONST_BITS))
+#define MULTIPLY(var,const)  ((int16_t) DESCALE((var) * (const), CONST_BITS))
 
-static av_always_inline void row_fdct(DCTELEM * data){
-  int_fast16_t tmp0, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
-  int_fast16_t tmp10, tmp11, tmp12, tmp13;
-  int_fast16_t z1, z2, z3, z4, z5, z11, z13;
-  DCTELEM *dataptr;
+static av_always_inline void row_fdct(int16_t * data){
+  int tmp0, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
+  int tmp10, tmp11, tmp12, tmp13;
+  int z1, z2, z3, z4, z5, z11, z13;
+  int16_t *dataptr;
   int ctr;
-  SHIFT_TEMPS
 
   /* Pass 1: process rows. */
 
@@ -209,14 +205,13 @@ static av_always_inline void row_fdct(DCTELEM * data){
  */
 
 GLOBAL(void)
-fdct_ifast (DCTELEM * data)
+ff_fdct_ifast (int16_t * data)
 {
-  int_fast16_t tmp0, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
-  int_fast16_t tmp10, tmp11, tmp12, tmp13;
-  int_fast16_t z1, z2, z3, z4, z5, z11, z13;
-  DCTELEM *dataptr;
+  int tmp0, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
+  int tmp10, tmp11, tmp12, tmp13;
+  int z1, z2, z3, z4, z5, z11, z13;
+  int16_t *dataptr;
   int ctr;
-  SHIFT_TEMPS
 
   row_fdct(data);
 
@@ -276,14 +271,13 @@ fdct_ifast (DCTELEM * data)
  */
 
 GLOBAL(void)
-fdct_ifast248 (DCTELEM * data)
+ff_fdct_ifast248 (int16_t * data)
 {
-  int_fast16_t tmp0, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
-  int_fast16_t tmp10, tmp11, tmp12, tmp13;
-  int_fast16_t z1;
-  DCTELEM *dataptr;
+  int tmp0, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
+  int tmp10, tmp11, tmp12, tmp13;
+  int z1;
+  int16_t *dataptr;
   int ctr;
-  SHIFT_TEMPS
 
   row_fdct(data);
 
